@@ -51,4 +51,17 @@ public class Ticket : Entity
 
         Status = StatusTicket.Fechado;
     }
+
+    public void AtualizarDescricao(string descricao)
+    {
+        Descricao = descricao;
+    }
+
+    public void AlterarStatus(StatusTicket novoStatus)
+    {
+        if (Status == StatusTicket.Fechado && novoStatus != StatusTicket.Fechado)
+            throw new InvalidOperationException("Não é possível reabrir um ticket fechado.");
+
+        Status = novoStatus;
+    }
 }
