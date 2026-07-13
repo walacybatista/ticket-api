@@ -5,18 +5,15 @@ namespace TicketApi.Domain.Entities;
 
 public class Ticket : Entity
 {
-    public string Titulo { get; private set; }
-    public string Descricao { get; private set; }
+    public string Titulo { get; private set; } = null!;
+    public string Descricao { get; private set; } = null!;
     public StatusTicket Status { get; private set; }
     public Guid EmpresaId { get; private set; }
     public Guid UsuarioId { get; private set; }
 
-    protected Ticket()
-    {
-        // Resolve warning para uso do DDD
-        Titulo = null!;
-        Descricao = null!;
-    }
+    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
+    // Não deve ser usado pelo código de negócio — use o construtor público.
+    protected Ticket() { }
 
     public Ticket(string titulo, string descricao, Guid empresaId, Guid usuarioId)
     {
@@ -51,4 +48,12 @@ public class Ticket : Entity
 
         Status = StatusTicket.Fechado;
     }
+<<<<<<< Updated upstream
+=======
+
+    public void AtualizarDescricao(string descricao)
+    {
+        Descricao = descricao;
+    }
+>>>>>>> Stashed changes
 }
