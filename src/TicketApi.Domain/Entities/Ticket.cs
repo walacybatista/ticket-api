@@ -48,12 +48,4 @@ public class Ticket : Entity
 
         Status = StatusTicket.Fechado;
     }
-<<<<<<< Updated upstream
-=======
-
-    public void AtualizarDescricao(string descricao)
-    {
-        Descricao = descricao;
-    }
->>>>>>> Stashed changes
 }
