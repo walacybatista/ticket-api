@@ -141,13 +141,16 @@ namespace TicketApi.Domain.Entities;
 
 public class Empresa : Entity
 {
-    public string Nome { get; private set; } = null!;
-    public string Cnpj { get; private set; } = null!;
-    public string Endereco { get; private set; } = null!;
+    public string Nome { get; private set; }
+    public string Cnpj { get; private set; }
+    public string Endereco { get; private set; }
 
-    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
-    // Não deve ser usado pelo código de negócio — use o construtor público.
-    protected Empresa() { }
+    protected Empresa()
+    {
+        Nome = null!;
+        Cnpj = null!;
+        Endereco = null!;
+    }
 
     public Empresa(string nome, string cnpj, string endereco)
     {
@@ -173,13 +176,15 @@ namespace TicketApi.Domain.Entities;
 
 public class Usuario : Entity
 {
-    public string Nome { get; private set; } = null!;
-    public string Email { get; private set; } = null!;
+    public string Nome { get; private set; }
+    public string Email { get; private set; }
     public Guid EmpresaId { get; private set; }
 
-    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
-    // Não deve ser usado pelo código de negócio — use o construtor público.
-    protected Usuario() { }
+    protected Usuario()
+    {
+        Nome = null!;
+        Email = null!;
+    }
 
     public Usuario(string nome, string email, Guid empresaId)
     {
@@ -209,15 +214,17 @@ namespace TicketApi.Domain.Entities;
 
 public class Ticket : Entity
 {
-    public string Titulo { get; private set; } = null!;
-    public string Descricao { get; private set; } = null!;
+    public string Titulo { get; private set; }
+    public string Descricao { get; private set; }
     public StatusTicket Status { get; private set; }
     public Guid EmpresaId { get; private set; }
     public Guid UsuarioId { get; private set; }
 
-    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
-    // Não deve ser usado pelo código de negócio — use o construtor público.
-    protected Ticket() { }
+    protected Ticket()
+    {
+        Titulo = null!;
+        Descricao = null!;
+    }
 
     public Ticket(string titulo, string descricao, Guid empresaId, Guid usuarioId)
     {
@@ -268,11 +275,12 @@ public class Comentario : Entity
 {
     public Guid TicketId { get; private set; }
     public Guid UsuarioId { get; private set; }
-    public string Texto { get; private set; } = null!;
+    public string Texto { get; private set; }
 
-    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
-    // Não deve ser usado pelo código de negócio — use o construtor público.
-    protected Comentario() { }
+    protected Comentario()
+    {
+        Texto = null!;
+    }
 
     public Comentario(Guid ticketId, Guid usuarioId, string texto)
     {
@@ -324,8 +332,8 @@ public interface ITicketRepository
 |---|---|
 | `private set` em todas as propriedades | Impede alteração de estado fora dos métodos de negócio da entidade |
 | Construtor público com validação (`ArgumentException`) | Impede a existência de um objeto em estado inválido |
-| Construtor `protected` sem parâmetros e **vazio** | Exigido pelo EF Core para materializar objetos via reflection ao ler do banco; marcado `protected` para não ser usado por código de negócio. Mantido sem corpo — os valores são preenchidos ou pelo EF (na leitura) ou pelo construtor público (na criação) |
-| `null!` (null-forgiving operator) **na declaração de cada propriedade `string`** (ex.: `public string Titulo { get; private set; } = null!;`) | Resolve o warning `CS8618` sem enfraquecer o `private set` nem tornar as propriedades anuláveis (`string?`), o que "vazaria" a preocupação técnica do EF para o Domain. Fica **na declaração** (e não no corpo do construtor vazio) para que o marcador técnico viva junto da propriedade a que se refere e o construtor `protected` permaneça vazio e autoexplicativo |
+| Construtor `protected` sem parâmetros | Exigido pelo EF Core para materializar objetos via reflection ao ler do banco; marcado `protected` para não ser usado por código de negócio |
+| `null!` (null-forgiving operator) nas `string` do construtor vazio | Resolve o warning `CS8618` sem enfraquecer o `private set` nem tornar as propriedades anuláveis (`string?`), o que "vazaria" a preocupação técnica do EF para o Domain |
 | `Guid`/`enum` não precisam de `null!` | São *value types* — nunca são `null`; o valor padrão de `Guid` não inicializado é `Guid.Empty`, por isso a validação `== Guid.Empty` é feita manualmente nos construtores |
 | `nameof(parametro)` sempre correspondente ao parâmetro validado no `if` | Garante que a exception aponte para o campo real que falhou, essencial para debugging correto em produção |
 | `TicketApi.Domain` sem nenhum pacote NuGet externo | Regra de negócio não pode depender de detalhe técnico (banco, ORM, framework web); permite trocar tecnologia de persistência sem alterar o Domain |
