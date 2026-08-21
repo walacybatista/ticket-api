@@ -6,13 +6,11 @@ public class Comentario : Entity
 {
     public Guid TicketId { get; private set; }
     public Guid UsuarioId { get; private set; }
-    public string Texto { get; private set; }
+    public string Texto { get; private set; } = null!;
 
-    protected Comentario()
-    {
-        // Resolve warning para uso do DDD
-        Texto = null!;
-    }
+    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
+    // Não deve ser usado pelo código de negócio — use o construtor público.
+    protected Comentario() { }
 
     public Comentario(Guid ticketId, Guid usuarioId, string texto)
     {

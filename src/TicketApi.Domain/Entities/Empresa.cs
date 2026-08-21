@@ -4,17 +4,13 @@ namespace TicketApi.Domain.Entities;
 
 public class Empresa : Entity
 {
-    public string Nome { get; private set; }
-    public string Cnpj { get; private set; }
-    public string Endereco { get; private set; }
+    public string Nome { get; private set; } = null!;
+    public string Cnpj { get; private set; } = null!;
+    public string Endereco { get; private set; } = null!;
 
-    protected Empresa()
-    {
-        // Resolve warning para uso do DDD
-        Nome = null!;
-        Cnpj = null!;
-        Endereco = null!;
-    }
+    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
+    // Não deve ser usado pelo código de negócio — use o construtor público.
+    protected Empresa() { }
 
     public Empresa(string nome, string cnpj, string endereco)
     {

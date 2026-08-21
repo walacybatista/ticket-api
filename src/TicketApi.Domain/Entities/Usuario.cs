@@ -4,16 +4,13 @@ namespace TicketApi.Domain.Entities;
 
 public class Usuario : Entity
 {
-    public string Nome { get; private set; }
-    public string Email { get; private set; }
+    public string Nome { get; private set; } = null!;
+    public string Email { get; private set; } = null!;
     public Guid EmpresaId { get; private set; }
 
-    protected Usuario()
-    {
-        // resolve waring para DDD
-        Nome = null!;
-        Email = null!;
-    }
+    // Exigido pelo EF Core para materializar a entidade via reflection ao ler do banco.
+    // Não deve ser usado pelo código de negócio — use o construtor público.
+    protected Usuario() { }
 
     public Usuario(string nome, string email, Guid empresaId)
     {
