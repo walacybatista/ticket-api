@@ -235,17 +235,24 @@ Localizado na raiz do projeto. Multi-stage build com duas etapas:
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
+# Copia a solution e TODOS os .csproj primeiro, para aproveitar o cache de
+# camadas do Docker: o "dotnet restore" só re-executa quando um .csproj muda.
 COPY ["TicketApi.slnx", "."]
+COPY ["src/TicketApi.Domain/TicketApi.Domain.csproj", "src/TicketApi.Domain/"]
+COPY ["src/TicketApi.Application/TicketApi.Application.csproj", "src/TicketApi.Application/"]
+COPY ["src/TicketApi.Infrastructure/TicketApi.Infrastructure.csproj", "src/TicketApi.Infrastructure/"]
 COPY ["src/TicketApi.Api/TicketApi.Api.csproj", "src/TicketApi.Api/"]
 RUN dotnet restore "src/TicketApi.Api/TicketApi.Api.csproj"
 
 COPY . .
-RUN dotnet publish "src/TicketApi.Api/TicketApi.Api.csproj" -c Release -o /app/publish
+RUN dotnet publish "src/TicketApi.Api/TicketApi.Api.csproj" -c Release -o /app/publish --no-restore
 
 # Etapa 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
 WORKDIR /app
+USER app
 COPY --from=build /app/publish .
+EXPOSE 8080
 ENTRYPOINT ["dotnet", "TicketApi.Api.dll"]
 ```
 
@@ -253,16 +260,28 @@ ENTRYPOINT ["dotnet", "TicketApi.Api.dll"]
 
 **Motivo do multi-stage**: a etapa de build usa a imagem do SDK (~1GB+, contém compiladores e ferramentas), enquanto a etapa final usa apenas a imagem de runtime ASP.NET (bem mais enxuta, ~200MB), reduzindo o tamanho da imagem final e a superfície de exposição de ferramentas desnecessárias em produção.
 
+**Por que copiar todos os `.csproj` antes do restore**: como a solução tem quatro projetos (`Domain`, `Application`, `Infrastructure`, `Api`) e o `Api` referencia os demais, copiar apenas o `.csproj` da API antes do `dotnet restore` fazia o restore **pular** os projetos referenciados (`Skipping project ... because it was not found`). O restore real acabava acontecendo dentro do `dotnet publish`, invalidando o cache de dependências a cada mudança de código. Copiando os quatro `.csproj` primeiro, a camada de restore é reaproveitada enquanto nenhum `.csproj` mudar, e o `publish` usa `--no-restore`.
+
+**Usuário não-root**: a etapa final usa `USER app` (usuário `app`, UID 1654, já presente na imagem `aspnet:9.0`), evitando rodar o processo da aplicação como root dentro do container.
+
 ### .dockerignore
 
 ```
 **/bin/
 **/obj/
+**/out/
 **/.vs/
 **/.vscode/
+**/.idea/
+*.user
+.git/
+docs/
+README.md
+**/.env
+**/appsettings.*.Local.json
 ```
 
-Evita copiar artefatos de build locais (que podem ter sido compilados para uma plataforma diferente da do container) para dentro da imagem Docker.
+Evita copiar artefatos de build locais (que podem ter sido compilados para uma plataforma diferente da do container), pastas de IDE, histórico Git, documentação e possíveis segredos locais para dentro do contexto de build da imagem Docker. Reduz o tamanho do contexto enviado ao Docker e a superfície de vazamento de credenciais.
 
 ### docker-compose.yml
 
@@ -276,9 +295,15 @@ services:
       - "5000:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      # Dentro da rede do compose, o host do banco é o nome do serviço ("postgres"), não localhost.
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=ticket_db;Username=ticket_user;Password=ticket_pass
     depends_on:
-      - postgres
-      - mongo
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
 
   postgres:
     image: postgres:16
@@ -290,6 +315,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticket_user -d ticket_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   mongo:
     image: mongo:7
@@ -297,11 +328,19 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   postgres_data:
   mongo_data:
 ```
+
+**Healthchecks + `depends_on: condition: service_healthy`**: substituem a limitação do antigo `depends_on` simples (que só garantia que o container do banco havia *iniciado*, não que estava pronto para aceitar conexões). Agora a API só é iniciada depois que Postgres e Mongo respondem aos healthchecks (`pg_isready` e `db.adminCommand('ping')`), o que foi confirmado durante a subida: os containers `postgres` e `mongo` ficam `Healthy` antes de o container `api` iniciar.
 
 ### Serviços
 
@@ -339,9 +378,13 @@ Rede padrão criada automaticamente pelo Docker Compose: `ticket-api_default`. N
 | Variável | Serviço | Valor |
 |---|---|---|
 | `ASPNETCORE_ENVIRONMENT` | api | `Development` |
+| `ASPNETCORE_HTTP_PORTS` | api | `8080` |
+| `ConnectionStrings__Default` | api | `Host=postgres;Port=5432;Database=ticket_db;Username=ticket_user;Password=ticket_pass` |
 | `POSTGRES_USER` | postgres | `ticket_user` |
 | `POSTGRES_PASSWORD` | postgres | `ticket_pass` |
 | `POSTGRES_DB` | postgres | `ticket_db` |
+
+> O `ConnectionStrings__Default` usa a convenção de configuração do .NET (o `__` vira `:` em `ConnectionStrings:Default`), e o host aponta para o serviço `postgres` da rede do compose — por isso a API conecta no banco mesmo sem `localhost`. Fora do Docker, esse valor vem do `appsettings.json` apontando para `localhost:5432`.
 
 > Não configurado atualmente: uso de arquivo `.env` separado para essas variáveis (estão hardcoded diretamente no `docker-compose.yml`). Considerar migrar para `.env` antes de subir este projeto para produção, para não versionar credenciais no Git.
 
@@ -393,7 +436,7 @@ Este arquivo garante que o `dotnet` CLI, quando executado fora do container, use
 
 ### Container sobe mas a aplicação não conecta ao banco
 
-`depends_on` no `docker-compose.yml` garante apenas que o container do banco **iniciou**, não que ele já está pronto para aceitar conexões. Se a API tentar conectar antes do Postgres/Mongo estarem prontos, pode falhar. Não configurado atualmente: healthchecks no `docker-compose.yml` para resolver isso de forma robusta (ver seção 11).
+Historicamente, o `depends_on` simples no `docker-compose.yml` garantia apenas que o container do banco **iniciou**, não que ele já estava pronto para aceitar conexões. **Isto já foi resolvido**: o compose agora usa `depends_on: condition: service_healthy` com healthchecks em Postgres e Mongo, de modo que a API só sobe após os bancos estarem prontos.
 
 ### Porta já em uso (5000, 5432 ou 27017)
 
@@ -403,10 +446,12 @@ Outro processo ou container já está usando a porta. Alterar o mapeamento de po
 
 ## 11. Próximas configurações possíveis
 
-- **Healthchecks** no `docker-compose.yml` para Postgres e Mongo, garantindo que a API só inicie de fato depois que os bancos estiverem prontos para aceitar conexões (resolveria a limitação do `depends_on` mencionada na seção 10)
+- ✅ **Healthchecks** no `docker-compose.yml` para Postgres e Mongo — **implementado** (ver seções 8 e 10).
+- ✅ **Segurança de containers**: rodar o container da API com usuário não-root — **implementado** via `USER app` no `Dockerfile` (ver seção 8).
 - **Arquivo `.env`** para externalizar credenciais do Postgres, evitando hardcode no `docker-compose.yml`
 - **Docker secrets** para gerenciamento seguro de credenciais em ambientes de produção/orquestração (Swarm/Kubernetes)
 - **CI/CD**: pipeline que builda a imagem Docker automaticamente a cada push, rodando testes antes do build
 - **Otimização adicional de imagem**: uso de imagens `-alpine` para reduzir ainda mais o tamanho final, se compatibilidade permitir
 - **RabbitMQ e Redis**: adicionar como novos serviços no `docker-compose.yml` quando essas funcionalidades forem implementadas (previsto no plano original do projeto)
-- **Segurança de containers**: rodar o container da API com usuário não-root (atualmente não configurado explicitamente — verificar se a imagem base `aspnet:9.0` já define isso por padrão ou se precisa de configuração adicional)
+- ✅ **Conexão real da API com o PostgreSQL**: **implementado** — a API agora persiste tickets no Postgres via EF Core + Npgsql (`PostgresTicketRepository`), com a connection string injetada por variável de ambiente (`ConnectionStrings__Default`, host `postgres`) e migrations aplicadas automaticamente na subida. O antigo `InMemoryTicketRepository` foi removido.
+- **Conexão com o MongoDB**: o serviço `mongo` sobe mas ainda **não é consumido** pela aplicação — falta implementar a integração com o `MongoDB.Driver` (previsto no plano original).

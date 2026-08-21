@@ -7,9 +7,15 @@ services:
       - "5000:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      # Dentro da rede do compose, o host do banco é o nome do serviço ("postgres"), não localhost.
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=ticket_db;Username=ticket_user;Password=ticket_pass
     depends_on:
-      - postgres
-      - mongo
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
 
   postgres:
     image: postgres:16
@@ -21,6 +27,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticket_user -d ticket_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   mongo:
     image: mongo:7
@@ -28,6 +40,12 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   postgres_data:

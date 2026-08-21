@@ -1,8 +1,9 @@
 using FluentValidation;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using TicketApi.Application.Common.Behaviors;
-using TicketApi.Domain.Repositories;
-using TicketApi.Infrastructure.Repositories;
+using TicketApi.Infrastructure;
+using TicketApi.Infrastructure.Persistence;
 using TicketApi.Api.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,11 +17,22 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(TicketApi.Application.Tickets.Commands.CriarTicket.CriarTicketCommand).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(TicketApi.Application.Tickets.Commands.CriarTicket.CriarTicketCommand).Assembly);
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-builder.Services.AddSingleton<ITicketRepository, InMemoryTicketRepository>();
+
+var connectionString = builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException("Connection string 'Default' não configurada.");
+builder.Services.AddInfrastructure(connectionString);
+
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
+
+// Aplica migrations pendentes automaticamente ao subir (prático para ambiente de dev).
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<TicketDbContext>();
+    dbContext.Database.Migrate();
+}
 
 app.UseExceptionHandler();
 // Configure the HTTP request pipeline.
