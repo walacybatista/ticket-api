@@ -87,19 +87,43 @@ O projeto é organizado em camadas seguindo os princípios de DDD:
 
 2. Suba os containers da aplicação, PostgreSQL e MongoDB:
    ```bash
-   docker-compose up
+   docker compose up -d --build
    ```
+   Os healthchecks garantem que a API só inicia depois que Postgres e Mongo estão prontos. Ao subir, a API aplica automaticamente as **migrations** pendentes do EF Core, criando a tabela `tickets` no PostgreSQL.
 
-3. A API estará disponível em `http://localhost:<porta>` (definir porta conforme configuração do `docker-compose.yml`).
+3. A API estará disponível em `http://localhost:5000` (mapeada de `8080` no container). O Swagger fica em `http://localhost:5000/swagger`.
+
+4. Para parar o ambiente (mantendo os dados dos bancos):
+   ```bash
+   docker compose down
+   ```
+   Use `docker compose down -v` para apagar também os volumes (dados do Postgres/Mongo).
+
+### Banco de dados e migrations
+
+A persistência de tickets usa **EF Core + Npgsql (PostgreSQL)**. A connection string é lida de `ConnectionStrings:Default`:
+
+- Em Docker, é injetada via variável de ambiente no `docker-compose.yml`, apontando para o host `postgres` (nome do serviço na rede do compose).
+- Em execução local (`dotnet run`, fora do Docker), vem de `appsettings.json`, apontando para `localhost:5432` — nesse caso, suba só os bancos com `docker compose up -d postgres mongo`.
+
+Para criar novas migrations (requer a ferramenta `dotnet-ef`: `dotnet tool install --global dotnet-ef`):
+
+```bash
+dotnet ef migrations add <NomeDaMigration> \
+  -p src/TicketApi.Infrastructure -s src/TicketApi.Api -o Persistence/Migrations
+```
+
+As migrations são aplicadas automaticamente na subida da API (`dbContext.Database.Migrate()` em `Program.cs`).
 
 ## 📡 Endpoints da API
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `POST` | `/tickets` | Cria um novo ticket |
-| `GET` | `/tickets` | Lista tickets (com filtros por status, empresa, etc.) |
-| `PUT` | `/tickets/{id}` | Atualiza um ticket (status, descrição) |
-| `DELETE` | `/tickets/{id}` | Remove um ticket |
+| `POST` | `/api/tickets` | Cria um novo ticket |
+| `GET` | `/api/tickets` | Lista tickets (filtros opcionais `status` e `empresaId`) |
+| `GET` | `/api/tickets/{id}` | Obtém um ticket por id |
+| `PUT` | `/api/tickets/{id}` | Atualiza um ticket (status, descrição) |
+| `DELETE` | `/api/tickets/{id}` | Remove um ticket |
 
 > DTOs (Data Transfer Objects) são utilizados para entrada e saída de dados em todos os endpoints.
 
@@ -107,11 +131,12 @@ O projeto é organizado em camadas seguindo os princípios de DDD:
 
 - [x] Definição do plano de implementação
 - [x] Configuração do ambiente (Docker + docker-compose)
-- [ ] Modelagem das entidades no domínio
-- [ ] Implementação do CRUD de tickets
-- [ ] Separação em CQRS (Comandos e Queries)
-- [ ] Organização da estrutura DDD (Domínio, Aplicação, Infraestrutura)
-- [ ] Conexão com PostgreSQL (EF Core ou Dapper) e MongoDB (MongoDB.Driver)
+- [x] Modelagem das entidades no domínio
+- [x] Implementação do CRUD de tickets
+- [x] Separação em CQRS (Comandos e Queries)
+- [x] Organização da estrutura DDD (Domínio, Aplicação, Infraestrutura)
+- [x] Conexão com PostgreSQL (EF Core + Npgsql) — persistência real de tickets
+- [ ] Conexão com MongoDB (MongoDB.Driver)
 - [ ] Testes unitários e de integração
 - [ ] Integração com RabbitMQ para processamento assíncrono
 - [ ] Cache com Redis
